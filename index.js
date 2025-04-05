@@ -194,29 +194,32 @@ function handleFavoriteToggle(event) {
 }
 
 /**
+ * Adds favorite toggle icons to all messages in the chat that don't have one
+ */
+function addFavoriteIconsToMessages() {
+    // Select all messages that don't have the favorite icon
+    $('#chat').find('.mes').each(function() {
+        const messageElement = $(this);
+        const extraButtonsContainer = messageElement.find('.extraMesButtons');
+        
+        // Check if the container exists and doesn't already have our icon
+        if (extraButtonsContainer.length && !extraButtonsContainer.find('.favorite-toggle-icon').length) {
+            extraButtonsContainer.append(messageButtonHtml);
+            console.log(`${pluginName}: Added favorite icon to message ${messageElement.attr('mesid')}`);
+        }
+    });
+}
+
+/**
  * Updates all favorite icons in the current view to reflect current state
  */
 function refreshFavoriteIconsInView() {
     if (!ensureFavoritesArrayExists()) return;
     
-    // First, make sure all visible messages have the favorite icon
-    const messagesToProcess = $('#chat').find('.mes:not(.favorite-icon-processed)');
-    if (messagesToProcess.length) {
-        messagesToProcess.each(function() {
-            const messageElement = $(this);
-            const extraButtonsContainer = messageElement.find('.extraMesButtons');
-            
-            if (extraButtonsContainer.length) {
-                // Only inject if the icon doesn't already exist
-                if (!extraButtonsContainer.find('.favorite-toggle-icon').length) {
-                    extraButtonsContainer.append(messageButtonHtml);
-                }
-                messageElement.addClass('favorite-icon-processed');
-            }
-        });
-    }
+    // First ensure all messages have favorite icons
+    addFavoriteIconsToMessages();
     
-    // Then update all icons to reflect current favorite status
+    // Then update the icons to show current favorite status
     $('#chat').find('.mes').each(function() {
         const messageElement = $(this);
         const messageId = messageElement.attr('mesid');
@@ -531,7 +534,8 @@ jQuery(async () => {
         // Initialize favorites array for current chat
         ensureFavoritesArrayExists();
         
-        // Add favorite icons to existing messages
+        // Add favorite icons to existing messages and update their state
+        addFavoriteIconsToMessages();
         refreshFavoriteIconsInView();
         
         // Set up event listeners
@@ -539,7 +543,11 @@ jQuery(async () => {
         eventSource.on(event_types.CHAT_CHANGED, () => {
             console.log(`${pluginName}: 聊天已更改，更新收藏图标...`);
             ensureFavoritesArrayExists();
-            refreshFavoriteIconsInView();
+            // Give DOM time to update with new messages
+            setTimeout(() => {
+                addFavoriteIconsToMessages();
+                refreshFavoriteIconsInView();
+            }, 100);
         });
         
         // Listen for message deletion
@@ -560,9 +568,42 @@ jQuery(async () => {
             }
         });
         
+        // Listen for new messages being received or sent
+        eventSource.on(event_types.MESSAGE_RECEIVED, () => {
+            setTimeout(() => addFavoriteIconsToMessages(), 100);
+        });
+        
+        eventSource.on(event_types.MESSAGE_SENT, () => {
+            setTimeout(() => addFavoriteIconsToMessages(), 100);
+        });
+        
+        // Listen for messages being updated
+        eventSource.on(event_types.MESSAGE_UPDATED, () => {
+            setTimeout(() => addFavoriteIconsToMessages(), 100);
+        });
+        
         // Listen for more messages loaded
         eventSource.on(event_types.MORE_MESSAGES_LOADED, () => {
-            refreshFavoriteIconsInView();
+            setTimeout(() => {
+                addFavoriteIconsToMessages();
+                refreshFavoriteIconsInView();
+            }, 100);
+        });
+        
+        // Also add observer for dynamic changes to chat
+        const chatObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length) {
+                    // New elements were added, check if they're messages
+                    setTimeout(() => addFavoriteIconsToMessages(), 50);
+                }
+            }
+        });
+        
+        // Start observing the chat container
+        chatObserver.observe(document.getElementById('chat'), { 
+            childList: true, 
+            subtree: true 
         });
         
         console.log(`${pluginName}: 插件加载完成!`);
