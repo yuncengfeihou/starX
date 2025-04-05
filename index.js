@@ -150,58 +150,67 @@ function handleFavoriteToggle(event) {
     const target = $(event.target).closest('.favorite-toggle-icon');
     if (!target.length) return;
 
+    // Get the message element and its ID (which is the index)
     const messageElement = target.closest('.mes');
-    const mesid = messageElement.attr('mesid'); // 这个是索引字符串
-    if (mesid === null || mesid === undefined) {
-        console.error(`${pluginName}: Could not find mesid attribute for favorite toggle`);
+    const messageIdString = messageElement.attr('mesid'); // Get mesid as string (e.g., "21")
+
+    if (!messageIdString) {
+        console.error(`${pluginName}: Could not find message ID (mesid attribute) for favorite toggle`);
         return;
     }
 
-    const messageIndex = parseInt(mesid); // 将索引字符串转为数字
+    // --- 修改开始 ---
+    // Convert the mesid string to an integer index
+    const messageIndex = parseInt(messageIdString, 10);
+
+    // Validate the index
     if (isNaN(messageIndex)) {
-        console.error(`${pluginName}: mesid "${mesid}" is not a valid number index.`);
-        return;
+         console.error(`${pluginName}: Invalid message index parsed from mesid: ${messageIdString}`);
+         return;
     }
 
-    // 切换图标视觉状态...
+    const context = getContext();
+
+    // Access the message using the index
+    const message = context.chat[messageIndex];
+
+    // Check if the message exists at that index
+    if (!message) {
+        console.error(`${pluginName}: Could not find message data at index ${messageIndex} (from mesid ${messageIdString})`);
+        // 注意：这里错误信息更精确了
+        return;
+    }
+    // --- 修改结束 ---
+
+    // Toggle the icon state
     const iconElement = target.find('i');
     const isCurrentlyFavorited = iconElement.hasClass('fa-solid');
+
+    // Update UI immediately
     if (isCurrentlyFavorited) {
         iconElement.removeClass('fa-solid').addClass('fa-regular');
     } else {
         iconElement.removeClass('fa-regular').addClass('fa-solid');
     }
 
-    // 根据新的状态更新数据
-    if (!isCurrentlyFavorited) { // === 添加收藏 ===
-        const context = getContext();
-        const message = context.chat[messageIndex]; // 使用索引直接获取消息对象
-
-        if (!message) {
-            console.error(`${pluginName}: Could not find message data at index ${messageIndex} (from mesid ${mesid})`);
-            return;
-        }
-
-        // !!! 关键：创建收藏信息时，使用 message.id !!!
+    // Update data based on new state
+    if (!isCurrentlyFavorited) {
+        // We found the message object using the index, now proceed
         const messageInfo = {
-            messageId: message.id, // <-- 存储真实的 message.id
+            // Store the original messageId string (from mesid) for consistency
+            // because other functions like removeFavoriteByMessageId and refreshFavoriteIconsInView
+            // also rely on finding items based on the 'mesid' attribute.
+            messageId: messageIdString,
             sender: message.name,
             role: message.is_user ? 'user' : 'character',
-            timestamp: message.send_date ? Math.floor(new Date(message.send_date).getTime() / 1000) : Math.floor(Date.now() / 1000)
+            // Use send_date (Unix timestamp number) as per file_d documentation
+            timestamp: message.send_date
         };
 
-        addFavorite(messageInfo); // addFavorite 函数内部会将包含真实 message.id 的对象存入 chat_metadata
-
-    } else { // === 取消收藏 ===
-        const context = getContext();
-        const messageToRemove = context.chat[messageIndex]; // 同样使用索引找到消息对象
-
-        if (messageToRemove && messageToRemove.id) {
-            // !!! 关键：使用 message.id 来执行删除 !!!
-            removeFavoriteByMessageId(messageToRemove.id); // removeFavoriteByMessageId 应该基于真实的 message.id 工作
-        } else {
-             console.warn(`${pluginName}: Could not find message or message.id at index ${messageIndex} to remove favorite.`);
-        }
+        addFavorite(messageInfo);
+    } else {
+        // Use the original messageId string (from mesid) to remove
+        removeFavoriteByMessageId(messageIdString);
     }
 }
 
@@ -635,11 +644,3 @@ jQuery(async () => {
         console.error(`${pluginName}: 初始化过程中出错:`, error);
     }
 });
-
-/**
- * Debounced version of saveMetadata
- */
-function saveMetadataDebounced() {
-    const context = getContext();
-    context.saveMetadata();
-}
