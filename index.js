@@ -87,12 +87,7 @@ function addFavorite(messageInfo) {
 
     // --- 添加日志 1.1 (调用 saveMetadataDebounced 前) ---
     console.log("即将直接调用 context.saveMetadata()...");
-    const context = getContext();
-    if (context && typeof context.saveMetadata === 'function') {
-        context.saveMetadata(); // 直接调用保存
-    } else {
-        console.error("无法获取 context 或 context.saveMetadata 不是函数!");
-    }
+    saveMetadataDebounced();
     console.log(`${pluginName}: Added favorite:`, item);
 
     // Update the popup if it's open
@@ -119,12 +114,7 @@ function removeFavoriteById(favoriteId) {
 
         // --- 添加日志 1.2 (调用 saveMetadataDebounced 前) ---
         console.log("即将直接调用 context.saveMetadata()...");
-        const context = getContext();
-        if (context && typeof context.saveMetadata === 'function') {
-            context.saveMetadata(); // 直接调用保存
-        } else {
-            console.error("无法获取 context 或 context.saveMetadata 不是函数!");
-        }
+        saveMetadataDebounced();
         console.log(`${pluginName}: Favorite removed: ${favoriteId}`);
         return true;
     }
