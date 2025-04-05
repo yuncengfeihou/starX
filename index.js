@@ -30,7 +30,7 @@ import {
 } from '../../../utils.js';
 
 // Define plugin folder name (important for consistency)
-const pluginName = 'favorites-plugin';
+const pluginName = 'starX';
 
 // Initialize plugin settings if they don't exist
 if (!extension_settings[pluginName]) {
