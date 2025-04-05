@@ -86,8 +86,13 @@ function addFavorite(messageInfo) {
     console.log(`${pluginName}: 添加后 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
 
     // --- 添加日志 1.1 (调用 saveMetadataDebounced 前) ---
-    console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存更改...`);
-    saveMetadataDebounced();
+    console.log("即将直接调用 context.saveMetadata()...");
+    const context = getContext();
+    if (context && typeof context.saveMetadata === 'function') {
+        context.saveMetadata(); // 直接调用保存
+    } else {
+        console.error("无法获取 context 或 context.saveMetadata 不是函数!");
+    }
     console.log(`${pluginName}: Added favorite:`, item);
 
     // Update the popup if it's open
@@ -113,8 +118,13 @@ function removeFavoriteById(favoriteId) {
         console.log(`${pluginName}: 删除后 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
 
         // --- 添加日志 1.2 (调用 saveMetadataDebounced 前) ---
-        console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存更改...`);
-        saveMetadataDebounced();
+        console.log("即将直接调用 context.saveMetadata()...");
+        const context = getContext();
+        if (context && typeof context.saveMetadata === 'function') {
+            context.saveMetadata(); // 直接调用保存
+        } else {
+            console.error("无法获取 context 或 context.saveMetadata 不是函数!");
+        }
         console.log(`${pluginName}: Favorite removed: ${favoriteId}`);
         return true;
     }
