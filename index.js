@@ -149,47 +149,59 @@ function updateFavoriteNote(favoriteId, note) {
 function handleFavoriteToggle(event) {
     const target = $(event.target).closest('.favorite-toggle-icon');
     if (!target.length) return;
-    
-    // Get the message element and its ID
+
     const messageElement = target.closest('.mes');
-    const messageId = messageElement.attr('mesid');
-    if (!messageId) {
-        console.error(`${pluginName}: Could not find message ID for favorite toggle`);
+    const mesid = messageElement.attr('mesid'); // 这个是索引字符串
+    if (mesid === null || mesid === undefined) {
+        console.error(`${pluginName}: Could not find mesid attribute for favorite toggle`);
         return;
     }
-    
-    // Toggle the icon state
+
+    const messageIndex = parseInt(mesid); // 将索引字符串转为数字
+    if (isNaN(messageIndex)) {
+        console.error(`${pluginName}: mesid "${mesid}" is not a valid number index.`);
+        return;
+    }
+
+    // 切换图标视觉状态...
     const iconElement = target.find('i');
     const isCurrentlyFavorited = iconElement.hasClass('fa-solid');
-    
-    // Update UI immediately
     if (isCurrentlyFavorited) {
         iconElement.removeClass('fa-solid').addClass('fa-regular');
     } else {
         iconElement.removeClass('fa-regular').addClass('fa-solid');
     }
-    
-    // Update data based on new state
-    if (!isCurrentlyFavorited) {
-        // Get message data
+
+    // 根据新的状态更新数据
+    if (!isCurrentlyFavorited) { // === 添加收藏 ===
         const context = getContext();
-        const message = context.chat.find(msg => msg.id == messageId);
-        
+        const message = context.chat[messageIndex]; // 使用索引直接获取消息对象
+
         if (!message) {
-            console.error(`${pluginName}: Could not find message data for ID ${messageId}`);
+            console.error(`${pluginName}: Could not find message data at index ${messageIndex} (from mesid ${mesid})`);
             return;
         }
-        
+
+        // !!! 关键：创建收藏信息时，使用 message.id !!!
         const messageInfo = {
-            messageId: messageId,
+            messageId: message.id, // <-- 存储真实的 message.id
             sender: message.name,
             role: message.is_user ? 'user' : 'character',
-            timestamp: message.send_date
+            timestamp: message.send_date ? Math.floor(new Date(message.send_date).getTime() / 1000) : Math.floor(Date.now() / 1000)
         };
-        
-        addFavorite(messageInfo);
-    } else {
-        removeFavoriteByMessageId(messageId);
+
+        addFavorite(messageInfo); // addFavorite 函数内部会将包含真实 message.id 的对象存入 chat_metadata
+
+    } else { // === 取消收藏 ===
+        const context = getContext();
+        const messageToRemove = context.chat[messageIndex]; // 同样使用索引找到消息对象
+
+        if (messageToRemove && messageToRemove.id) {
+            // !!! 关键：使用 message.id 来执行删除 !!!
+            removeFavoriteByMessageId(messageToRemove.id); // removeFavoriteByMessageId 应该基于真实的 message.id 工作
+        } else {
+             console.warn(`${pluginName}: Could not find message or message.id at index ${messageIndex} to remove favorite.`);
+        }
     }
 }
 
@@ -215,19 +227,24 @@ function addFavoriteIconsToMessages() {
  */
 function refreshFavoriteIconsInView() {
     if (!ensureFavoritesArrayExists()) return;
-    
-    // First ensure all messages have favorite icons
-    addFavoriteIconsToMessages();
-    
-    // Then update the icons to show current favorite status
+    addFavoriteIconsToMessages(); // 确保图标存在
+
+    const context = getContext(); // 获取 context
     $('#chat').find('.mes').each(function() {
         const messageElement = $(this);
-        const messageId = messageElement.attr('mesid');
-        
-        if (messageId) {
-            const isFavorited = window.chat_metadata.favorites && 
-                                window.chat_metadata.favorites.some(fav => fav.messageId === messageId);
-            
+        const mesid = messageElement.attr('mesid');
+        if (mesid === null || mesid === undefined) return; // 跳过无效的
+
+        const messageIndex = parseInt(mesid);
+        if (isNaN(messageIndex)) return; // 跳过无效索引
+
+        const message = context.chat[messageIndex]; // 用索引获取消息对象
+
+        if (message && message.id) { // 确保消息和真实 ID 存在
+            const realMessageId = message.id; // 获取真实的 message.id
+            // 使用真实的 message.id 去检查收藏状态
+            const isFavorited = window.chat_metadata.favorites.some(fav => fav.messageId === realMessageId);
+
             const iconElement = messageElement.find('.favorite-toggle-icon i');
             if (iconElement.length) {
                 if (isFavorited) {
@@ -415,22 +432,29 @@ function showFavoritesPopup() {
  * @param {string} favId The favorite ID
  * @param {string} messageId The message ID
  */
-async function handleDeleteFavoriteFromPopup(favId, messageId) {
-    // Ask for confirmation
+async function handleDeleteFavoriteFromPopup(favId, realMessageId) { // 重命名参数以示清晰
     const confirmResult = await callGenericPopup('确定要删除这条收藏吗？', POPUP_TYPE.CONFIRM);
-    
+
     if (confirmResult === POPUP_RESULT.YES) {
-        if (removeFavoriteById(favId)) {
-            // Update the popup
-            updateFavoritesPopup();
-            
-            // Also update the icon in the chat if the message is visible
-            const messageElement = $(`#chat .mes[mesid="${messageId}"]`);
-            if (messageElement.length) {
-                const iconElement = messageElement.find('.favorite-toggle-icon i');
-                if (iconElement.length) {
-                    iconElement.removeClass('fa-solid').addClass('fa-regular');
+        if (removeFavoriteById(favId)) { // removeFavoriteById 使用 favId，是正确的
+            updateFavoritesPopup(); // 更新弹窗
+
+            // --- 关键修改：更新聊天中的图标 ---
+            const context = getContext();
+            // 找到具有此 realMessageId 的消息的索引 (mesid)
+            const messageIndex = context.chat.findIndex(msg => msg.id === realMessageId);
+
+            if (messageIndex !== -1) {
+                // 使用索引 (mesid) 来定位 DOM 元素
+                const messageElement = $(`#chat .mes[mesid="${messageIndex}"]`);
+                if (messageElement.length) {
+                    const iconElement = messageElement.find('.favorite-toggle-icon i');
+                    if (iconElement.length) {
+                        iconElement.removeClass('fa-solid').addClass('fa-regular');
+                    }
                 }
+            } else {
+                console.warn(`${pluginName}: Could not find message index for realMessageId ${realMessageId} to update icon.`);
             }
         }
     }
