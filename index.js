@@ -267,7 +267,7 @@ function renderFavoriteItem(favItem, index) {
     if (!favItem) return '';
     
     const context = getContext();
-    const message = context.chat.find(msg => msg.id == favItem.messageId);
+    const message = context.chat.find(msg => msg.id == parseInt(messageId, 10))
     
     let previewText = '';
     let deletedClass = '';
