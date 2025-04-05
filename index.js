@@ -6,6 +6,7 @@ import {
     eventSource,
     event_types,
     messageFormatting,
+    saveMetadataDebounced, // 确保这里导入了 saveMetadataDebounced
 } from '../../../../script.js';
 
 // Import from the extension helper script
@@ -79,8 +80,17 @@ function addFavorite(messageInfo) {
         note: ''
     };
 
+    // --- 添加日志 ---
+    console.log(`${pluginName}: 添加前 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
     window.chat_metadata.favorites.push(item);
+    console.log(`${pluginName}: 添加后 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
+    // --- 添加日志结束 ---
+
+    // --- 添加日志 ---
+    console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存更改...`);
     saveMetadataDebounced();
+    // --- 添加日志结束 ---
+
     console.log(`${pluginName}: Added favorite:`, item);
 
     // Update the popup if it's open
@@ -96,18 +106,28 @@ function addFavorite(messageInfo) {
  */
 function removeFavoriteById(favoriteId) {
     if (!ensureFavoritesArrayExists() || !window.chat_metadata.favorites.length) return false;
-    
+
     const indexToRemove = window.chat_metadata.favorites.findIndex(fav => fav.id === favoriteId);
     if (indexToRemove !== -1) {
+        // --- 添加日志 ---
+        console.log(`${pluginName}: 删除前 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
         window.chat_metadata.favorites.splice(indexToRemove, 1);
+        console.log(`${pluginName}: 删除后 chat_metadata.favorites:`, JSON.stringify(window.chat_metadata.favorites));
+        // --- 添加日志结束 ---
+
+        // --- 添加日志 ---
+        console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存更改...`);
         saveMetadataDebounced();
+        // --- 添加日志结束 ---
+
         console.log(`${pluginName}: Favorite removed: ${favoriteId}`);
         return true;
     }
-    
+
     console.warn(`${pluginName}: Favorite with id ${favoriteId} not found.`);
     return false;
 }
+
 
 /**
  * Removes a favorite by the message ID it references
@@ -116,12 +136,12 @@ function removeFavoriteById(favoriteId) {
  */
 function removeFavoriteByMessageId(messageId) {
     if (!ensureFavoritesArrayExists() || !window.chat_metadata.favorites.length) return false;
-    
+
     const favItem = window.chat_metadata.favorites.find(fav => fav.messageId === messageId);
     if (favItem) {
         return removeFavoriteById(favItem.id);
     }
-    
+
     console.warn(`${pluginName}: Favorite for messageId ${messageId} not found.`);
     return false;
 }
@@ -133,10 +153,11 @@ function removeFavoriteByMessageId(messageId) {
  */
 function updateFavoriteNote(favoriteId, note) {
     if (!ensureFavoritesArrayExists() || !window.chat_metadata.favorites.length) return;
-    
+
     const favorite = window.chat_metadata.favorites.find(fav => fav.id === favoriteId);
     if (favorite) {
         favorite.note = note;
+        // 注意：这里也需要调用 saveMetadataDebounced，但用户未要求在此处添加日志
         saveMetadataDebounced();
         console.log(`${pluginName}: Updated note for favorite ${favoriteId}`);
     }
@@ -200,7 +221,8 @@ function handleFavoriteToggle(event) {
             // Store the original messageId string (from mesid) for consistency
             // because other functions like removeFavoriteByMessageId and refreshFavoriteIconsInView
             // also rely on finding items based on the 'mesid' attribute.
-            messageId: messageIdString,
+            // --- 修正：使用真实的 message.id (message.id) ---
+            messageId: message.id, // Use the real message ID from the chat data
             sender: message.name,
             role: message.is_user ? 'user' : 'character',
             // Use send_date (Unix timestamp number) as per file_d documentation
@@ -209,8 +231,9 @@ function handleFavoriteToggle(event) {
 
         addFavorite(messageInfo);
     } else {
-        // Use the original messageId string (from mesid) to remove
-        removeFavoriteByMessageId(messageIdString);
+        // --- 修正：使用真实的 message.id (message.id) 去移除 ---
+        // Use the real message ID to remove
+        removeFavoriteByMessageId(message.id);
     }
 }
 
@@ -222,11 +245,11 @@ function addFavoriteIconsToMessages() {
     $('#chat').find('.mes').each(function() {
         const messageElement = $(this);
         const extraButtonsContainer = messageElement.find('.extraMesButtons');
-        
+
         // Check if the container exists and doesn't already have our icon
         if (extraButtonsContainer.length && !extraButtonsContainer.find('.favorite-toggle-icon').length) {
             extraButtonsContainer.append(messageButtonHtml);
-            console.log(`${pluginName}: Added favorite icon to message ${messageElement.attr('mesid')}`);
+            // console.log(`${pluginName}: Added favorite icon to message ${messageElement.attr('mesid')}`); // 减少冗余日志
         }
     });
 }
@@ -239,17 +262,23 @@ function refreshFavoriteIconsInView() {
     addFavoriteIconsToMessages(); // 确保图标存在
 
     const context = getContext(); // 获取 context
+    if (!context || !context.chat) return; // 增加对 context 和 chat 的检查
+
     $('#chat').find('.mes').each(function() {
         const messageElement = $(this);
         const mesid = messageElement.attr('mesid');
         if (mesid === null || mesid === undefined) return; // 跳过无效的
 
         const messageIndex = parseInt(mesid);
-        if (isNaN(messageIndex)) return; // 跳过无效索引
+        if (isNaN(messageIndex) || messageIndex < 0 || messageIndex >= context.chat.length) { // 增加索引边界检查
+            // console.warn(`${pluginName}: Invalid message index ${messageIndex} found for element.`);
+            return; // 跳过无效索引
+        }
 
         const message = context.chat[messageIndex]; // 用索引获取消息对象
 
-        if (message && message.id) { // 确保消息和真实 ID 存在
+        // --- 使用真实的 message.id ---
+        if (message && message.id !== undefined && message.id !== null) { // 确保消息和真实 ID 存在
             const realMessageId = message.id; // 获取真实的 message.id
             // 使用真实的 message.id 去检查收藏状态
             const isFavorited = window.chat_metadata.favorites.some(fav => fav.messageId === realMessageId);
@@ -262,9 +291,12 @@ function refreshFavoriteIconsInView() {
                     iconElement.removeClass('fa-solid').addClass('fa-regular');
                 }
             }
+        } else {
+             // console.warn(`${pluginName}: Message or message.id not found for index ${messageIndex}`);
         }
     });
 }
+
 
 /**
  * Renders a single favorite item for the popup
@@ -274,13 +306,14 @@ function refreshFavoriteIconsInView() {
  */
 function renderFavoriteItem(favItem, index) {
     if (!favItem) return '';
-    
+
     const context = getContext();
-    const message = context.chat.find(msg => msg.id == parseInt(messageId, 10))
-    
+    // --- 修正：使用 favItem.messageId 查找消息 ---
+    const message = context.chat.find(msg => msg.id == favItem.messageId);
+
     let previewText = '';
     let deletedClass = '';
-    
+
     if (message) {
         // Get a preview of the message content (truncated if long)
         previewText = message.mes;
@@ -288,16 +321,16 @@ function renderFavoriteItem(favItem, index) {
             previewText = previewText.substring(0, 100) + '...';
         }
         // Format message text
-        previewText = messageFormatting(previewText, favItem.sender, false, 
+        previewText = messageFormatting(previewText, favItem.sender, false,
                                         favItem.role === 'user', null, {}, false);
     } else {
-        previewText = '[消息已删除]';
+        previewText = '[消息已删除或无法找到]'; // 更清晰的提示
         deletedClass = 'deleted';
     }
-    
+
     // Format timestamp
     const formattedTime = timestampToMoment(favItem.timestamp).format('YYYY-MM-DD HH:mm');
-    
+
     return `
         <div class="favorite-item" data-fav-id="${favItem.id}" data-msg-id="${favItem.messageId}" data-index="${index}">
             <div class="fav-meta">${favItem.sender} (${favItem.role}) - ${formattedTime}</div>
@@ -311,27 +344,28 @@ function renderFavoriteItem(favItem, index) {
     `;
 }
 
+
 /**
  * Updates the favorites popup with current data
  */
 function updateFavoritesPopup() {
     if (!favoritesPopup || !ensureFavoritesArrayExists()) return;
-    
+
     const context = getContext();
     const chatName = context.characterId ? context.name2 : `群组: ${context.groups.find(g => g.id === context.groupId)?.name || '未命名群组'}`;
     const totalFavorites = window.chat_metadata.favorites.length;
-    
+
     // Sort favorites by timestamp (oldest first)
     const sortedFavorites = [...window.chat_metadata.favorites].sort((a, b) => a.timestamp - b.timestamp);
-    
+
     // Pagination
     const totalPages = Math.max(1, Math.ceil(totalFavorites / itemsPerPage));
     if (currentPage > totalPages) currentPage = totalPages;
-    
+
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = Math.min(startIndex + itemsPerPage, totalFavorites);
     const currentPageItems = sortedFavorites.slice(startIndex, endIndex);
-    
+
     // Build content for the popup
     let content = `
         <div class="favorites-popup-content">
@@ -341,7 +375,7 @@ function updateFavoritesPopup() {
             <div class="favorites-divider"></div>
             <div class="favorites-list">
     `;
-    
+
     // Check if we have any favorites
     if (totalFavorites === 0) {
         content += `<div class="favorites-empty">当前没有收藏的消息。点击消息右下角的星形图标来添加收藏。</div>`;
@@ -350,7 +384,7 @@ function updateFavoritesPopup() {
         currentPageItems.forEach((favItem, index) => {
             content += renderFavoriteItem(favItem, startIndex + index);
         });
-        
+
         // Add pagination controls if needed
         if (totalPages > 1) {
             content += `<div class="favorites-pagination">`;
@@ -363,7 +397,7 @@ function updateFavoritesPopup() {
             content += `</div>`;
         }
     }
-    
+
     content += `
             </div>
             <div class="favorites-footer">
@@ -372,7 +406,7 @@ function updateFavoritesPopup() {
             </div>
         </div>
     `;
-    
+
     // Update popup content
     favoritesPopup.content = content;
     favoritesPopup.update();
@@ -386,11 +420,11 @@ function showFavoritesPopup() {
         // Create a new popup if it doesn't exist
         favoritesPopup = new Popup('收藏消息', '');
         favoritesPopup.width = 600;
-        
+
         // Set up event delegation for popup interactions
         favoritesPopup.popup.addEventListener('click', function(event) {
             const target = $(event.target);
-            
+
             // Handle pagination
             if (target.hasClass('pagination-prev')) {
                 if (currentPage > 1) {
@@ -403,31 +437,31 @@ function showFavoritesPopup() {
                     currentPage++;
                     updateFavoritesPopup();
                 }
-            } 
+            }
             // Handle close button
             else if (target.hasClass('close-popup')) {
                 favoritesPopup.hide();
-            } 
+            }
             // Handle clear invalid button
             else if (target.hasClass('clear-invalid')) {
                 handleClearInvalidFavorites();
-            } 
+            }
             // Handle edit note (pencil icon)
             else if (target.hasClass('fa-pencil')) {
                 const favItem = target.closest('.favorite-item');
                 const favId = favItem.data('fav-id');
                 handleEditNote(favId);
-            } 
+            }
             // Handle delete favorite (trash icon)
             else if (target.hasClass('fa-trash')) {
                 const favItem = target.closest('.favorite-item');
                 const favId = favItem.data('fav-id');
-                const msgId = favItem.data('msg-id');
-                handleDeleteFavoriteFromPopup(favId, msgId);
+                const msgId = favItem.data('msg-id'); // 获取真实的 message ID
+                handleDeleteFavoriteFromPopup(favId, msgId); // 传递 message ID
             }
         });
     }
-    
+
     // Reset to first page when opening
     currentPage = 1;
     // Update popup content
@@ -436,10 +470,11 @@ function showFavoritesPopup() {
     favoritesPopup.show();
 }
 
+
 /**
  * Handles the deletion of a favorite from the popup
  * @param {string} favId The favorite ID
- * @param {string} messageId The message ID
+ * @param {string} realMessageId The message ID // 参数名修改
  */
 async function handleDeleteFavoriteFromPopup(favId, realMessageId) { // 重命名参数以示清晰
     const confirmResult = await callGenericPopup('确定要删除这条收藏吗？', POPUP_TYPE.CONFIRM);
@@ -450,6 +485,8 @@ async function handleDeleteFavoriteFromPopup(favId, realMessageId) { // 重命�
 
             // --- 关键修改：更新聊天中的图标 ---
             const context = getContext();
+            if (!context || !context.chat) return; // 增加检查
+
             // 找到具有此 realMessageId 的消息的索引 (mesid)
             const messageIndex = context.chat.findIndex(msg => msg.id === realMessageId);
 
@@ -475,12 +512,12 @@ async function handleDeleteFavoriteFromPopup(favId, realMessageId) { // 重命�
  */
 async function handleEditNote(favId) {
     if (!ensureFavoritesArrayExists()) return;
-    
+
     const favorite = window.chat_metadata.favorites.find(fav => fav.id === favId);
     if (!favorite) return;
-    
+
     const result = await callGenericPopup('为这条收藏添加备注:', POPUP_TYPE.INPUT, favorite.note || '');
-    
+
     if (result !== null && typeof result === 'string') {
         updateFavoriteNote(favId, result);
         updateFavoritesPopup();
@@ -495,41 +532,52 @@ async function handleClearInvalidFavorites() {
         await callGenericPopup('当前没有收藏项可清理。', POPUP_TYPE.TEXT);
         return;
     }
-    
+
     const context = getContext();
+    if (!context || !context.chat) {
+        await callGenericPopup('无法获取当前聊天信息以进行清理。', POPUP_TYPE.TEXT);
+        return;
+    }
+
     const invalidFavorites = [];
-    
+
     // Find all invalid favorites (those referencing deleted messages)
     window.chat_metadata.favorites.forEach(fav => {
+        // --- 修正：使用 fav.messageId 查找 ---
         const message = context.chat.find(msg => msg.id == fav.messageId);
         if (!message) {
             invalidFavorites.push(fav);
         }
     });
-    
+
     if (invalidFavorites.length === 0) {
         await callGenericPopup('没有找到无效的收藏项。', POPUP_TYPE.TEXT);
         return;
     }
-    
+
     const confirmResult = await callGenericPopup(
-        `发现 ${invalidFavorites.length} 条引用已删除消息的收藏项。确定要删除这些无效收藏吗？`, 
+        `发现 ${invalidFavorites.length} 条引用已删除消息的收藏项。确定要删除这些无效收藏吗？`,
         POPUP_TYPE.CONFIRM
     );
-    
+
     if (confirmResult === POPUP_RESULT.YES) {
         // Filter out invalid favorites
         window.chat_metadata.favorites = window.chat_metadata.favorites.filter(fav => {
+            // --- 修正：使用 fav.messageId 查找 ---
             const message = context.chat.find(msg => msg.id == fav.messageId);
             return !!message;
         });
-        
+
+        // --- 添加日志 ---
+        console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存清理后的更改...`);
         saveMetadataDebounced();
-        
+        // --- 添加日志结束 ---
+
         await callGenericPopup(`已成功清理 ${invalidFavorites.length} 条无效收藏。`, POPUP_TYPE.TEXT);
-        updateFavoritesPopup();
+        updateFavoritesPopup(); // 更新弹窗显示
     }
 }
+
 
 /**
  * Main entry point for the plugin
@@ -537,13 +585,13 @@ async function handleClearInvalidFavorites() {
 jQuery(async () => {
     try {
         console.log(`${pluginName}: 插件加载中...`);
-        
+
         // Add button to the data bank wand container
         try {
             const inputButtonHtml = await renderExtensionTemplateAsync(`third-party/${pluginName}`, 'input_button');
             $('#data_bank_wand_container').append(inputButtonHtml);
             console.log(`${pluginName}: 已将按钮添加到 #data_bank_wand_container`);
-            
+
             // Bind click event to the button
             $('#favorites_button').on('click', () => {
                 showFavoritesPopup();
@@ -551,7 +599,7 @@ jQuery(async () => {
         } catch (error) {
             console.error(`${pluginName}: 加载或注入 input_button.html 失败:`, error);
         }
-        
+
         // Add settings to extension settings
         try {
             const settingsHtml = await renderExtensionTemplateAsync(`third-party/${pluginName}`, 'settings_display');
@@ -560,17 +608,17 @@ jQuery(async () => {
         } catch (error) {
             console.error(`${pluginName}: 加载或注入 settings_display.html 失败:`, error);
         }
-        
+
         // Set up event delegation for favorite toggle icon
         $(document).on('click', '.favorite-toggle-icon', handleFavoriteToggle);
-        
+
         // Initialize favorites array for current chat
         ensureFavoritesArrayExists();
-        
+
         // Add favorite icons to existing messages and update their state
         addFavoriteIconsToMessages();
         refreshFavoriteIconsInView();
-        
+
         // Set up event listeners
         // Listen for chat change events
         eventSource.on(event_types.CHAT_CHANGED, () => {
@@ -580,41 +628,59 @@ jQuery(async () => {
             setTimeout(() => {
                 addFavoriteIconsToMessages();
                 refreshFavoriteIconsInView();
-            }, 100);
+            }, 100); // 延迟可能需要根据实际情况调整
         });
-        
+
         // Listen for message deletion
         eventSource.on(event_types.MESSAGE_DELETED, (deletedMessageId) => {
             if (!ensureFavoritesArrayExists() || !window.chat_metadata.favorites.length) return;
-            
+
+            // --- 修正：使用真实的 message ID ---
             const favIndex = window.chat_metadata.favorites.findIndex(fav => fav.messageId === deletedMessageId);
-            
+
             if (favIndex !== -1) {
                 console.log(`${pluginName}: 消息 ${deletedMessageId} 已被删除，删除对应的收藏项`);
-                
+
                 window.chat_metadata.favorites.splice(favIndex, 1);
+
+                // --- 添加日志 ---
+                console.log(`${pluginName}: 即将调用 saveMetadataDebounced 来保存删除消息对应收藏后的更改...`);
                 saveMetadataDebounced();
-                
+                // --- 添加日志结束 ---
+
                 if (favoritesPopup && favoritesPopup.isVisible()) {
                     updateFavoritesPopup();
                 }
             }
         });
-        
+
+
         // Listen for new messages being received or sent
         eventSource.on(event_types.MESSAGE_RECEIVED, () => {
-            setTimeout(() => addFavoriteIconsToMessages(), 100);
+            // 延迟执行以确保 DOM 更新
+            setTimeout(() => {
+                addFavoriteIconsToMessages();
+                refreshFavoriteIconsInView(); // 也需要刷新状态
+            }, 150); // 稍微增加延迟
         });
-        
+
         eventSource.on(event_types.MESSAGE_SENT, () => {
-            setTimeout(() => addFavoriteIconsToMessages(), 100);
+            // 延迟执行以确保 DOM 更新
+            setTimeout(() => {
+                addFavoriteIconsToMessages();
+                refreshFavoriteIconsInView(); // 也需要刷新状态
+            }, 150); // 稍微增加延迟
         });
-        
-        // Listen for messages being updated
+
+        // Listen for messages being updated (e.g., regeneration)
         eventSource.on(event_types.MESSAGE_UPDATED, () => {
-            setTimeout(() => addFavoriteIconsToMessages(), 100);
+            // 延迟执行以确保 DOM 更新
+             setTimeout(() => {
+                addFavoriteIconsToMessages();
+                refreshFavoriteIconsInView(); // 更新可能改变消息内容或 ID，需要刷新
+            }, 150);
         });
-        
+
         // Listen for more messages loaded
         eventSource.on(event_types.MORE_MESSAGES_LOADED, () => {
             setTimeout(() => {
@@ -622,23 +688,49 @@ jQuery(async () => {
                 refreshFavoriteIconsInView();
             }, 100);
         });
-        
-        // Also add observer for dynamic changes to chat
+
+        // Also add observer for dynamic changes to chat (fallback/redundancy)
         const chatObserver = new MutationObserver((mutations) => {
+            let needsUpdate = false;
             for (const mutation of mutations) {
                 if (mutation.type === 'childList' && mutation.addedNodes.length) {
-                    // New elements were added, check if they're messages
-                    setTimeout(() => addFavoriteIconsToMessages(), 50);
+                   // 检查添加的节点是否是 .mes 元素或包含 .mes 元素
+                   mutation.addedNodes.forEach(node => {
+                       if (node.nodeType === Node.ELEMENT_NODE) {
+                           if (node.classList.contains('mes') || node.querySelector('.mes')) {
+                               needsUpdate = true;
+                           }
+                       }
+                   });
                 }
+                // 可以考虑监听 attribute 变化，但可能过于频繁
+                // if (mutation.type === 'attributes' && mutation.attributeName === 'mesid') {
+                //    needsUpdate = true;
+                // }
+            }
+            if(needsUpdate){
+                 // 使用 debounce 或 throttle 避免过于频繁的调用
+                 // 这里暂时用简单的 setTimeout
+                 setTimeout(() => {
+                     addFavoriteIconsToMessages();
+                     refreshFavoriteIconsInView();
+                 }, 100); // 短暂延迟合并更新
             }
         });
-        
-        // Start observing the chat container
-        chatObserver.observe(document.getElementById('chat'), { 
-            childList: true, 
-            subtree: true 
-        });
-        
+
+
+        // Start observing the chat container if it exists
+        const chatElement = document.getElementById('chat');
+        if (chatElement) {
+            chatObserver.observe(chatElement, {
+                childList: true,
+                subtree: true // 观察子树以捕获内部变化
+            });
+        } else {
+             console.error(`${pluginName}: Could not find #chat element to observe.`);
+        }
+
+
         console.log(`${pluginName}: 插件加载完成!`);
     } catch (error) {
         console.error(`${pluginName}: 初始化过程中出错:`, error);
