@@ -871,7 +871,7 @@ jQuery(async () => {
 
             // 为按钮绑定点击事件 (确保按钮 ID 正确)
             // 假设你的 input_button.html 中的按钮 ID 是 "favorites-plugin-button"
-            $('#favorites-plugin-button').on('click', () => {
+            $('#favorites_button').on('click', () => {
                 console.log(`${logPrefix} 侧边栏按钮被点击`);
                 showFavoritesPopup(); // 点击时显示弹窗
             });
