@@ -146,72 +146,131 @@ function updateFavoriteNote(favoriteId, note) {
  * Handles the toggle of favorite status when clicking the star icon
  * @param {Event} event The click event
  */
+
 function handleFavoriteToggle(event) {
+    // --- 调试点 1 ---
+    // 注意：这里的 pluginName 需要在您的代码中实际定义
+    const pluginName = window.pluginName || 'ChatFavorites'; // 提供一个默认值以防万一
+    console.log(`${pluginName}: handleFavoriteToggle - 开始执行`);
+
     const target = $(event.target).closest('.favorite-toggle-icon');
-    if (!target.length) return;
-
-    // Get the message element and its ID (which is the index)
-    const messageElement = target.closest('.mes');
-    const messageIdString = messageElement.attr('mesid'); // Get mesid as string (e.g., "21")
-
-    if (!messageIdString) {
-        console.error(`${pluginName}: Could not find message ID (mesid attribute) for favorite toggle`);
+    if (!target.length) {
+        // --- 调试点 2 ---
+        console.log(`${pluginName}: handleFavoriteToggle - 退出：未找到 .favorite-toggle-icon`);
         return;
     }
 
-    // --- 修改开始 ---
+    const messageElement = target.closest('.mes');
+    if (!messageElement || !messageElement.length) { // 增加对 messageElement 的检查
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：无法找到父级 .mes 元素`);
+        return;
+    }
+
+    const messageIdString = messageElement.attr('mesid');
+    if (!messageIdString) {
+        // --- 调试点 3 ---
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：未找到 mesid 属性`);
+        return;
+    }
+
+    // --- 从 log.js 移植过来的代码 ---
     // Convert the mesid string to an integer index
     const messageIndex = parseInt(messageIdString, 10);
 
     // Validate the index
     if (isNaN(messageIndex)) {
-         console.error(`${pluginName}: Invalid message index parsed from mesid: ${messageIdString}`);
-         return;
+        // --- 调试点 4 ---
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：mesid 解析为 NaN: ${messageIdString}`);
+        return;
     }
 
-    const context = getContext();
+    // --- 调试点 5 ---
+    console.log(`${pluginName}: handleFavoriteToggle - 获取 context 和消息对象 (索引: ${messageIndex})`);
+
+    // 确保 getContext 和 context.chat 存在
+    let context;
+    try {
+        context = getContext(); // 假设 getContext 已定义并返回有效对象
+        if (!context || !context.chat) {
+            console.error(`${pluginName}: handleFavoriteToggle - 退出：getContext() 返回无效或缺少 chat 属性`);
+            return;
+        }
+    } catch (e) {
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：调用 getContext() 时出错:`, e);
+        return;
+    }
+
 
     // Access the message using the index
     const message = context.chat[messageIndex];
 
     // Check if the message exists at that index
     if (!message) {
-        console.error(`${pluginName}: Could not find message data at index ${messageIndex} (from mesid ${messageIdString})`);
-        // 注意：这里错误信息更精确了
+        // --- 调试点 6 ---
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：在索引 ${messageIndex} 未找到消息对象 (来自 mesid ${messageIdString})`);
         return;
     }
-    // --- 修改结束 ---
+    // --- 移植代码结束 ---
+
+    // --- 如果代码能执行到这里，说明前面的检查都通过了 ---
+    console.log(`${pluginName}: handleFavoriteToggle - 成功获取消息对象:`, message);
 
     // Toggle the icon state
     const iconElement = target.find('i');
+    if (!iconElement || !iconElement.length) { // 增加对 iconElement 的检查
+        console.error(`${pluginName}: handleFavoriteToggle - 退出：在 .favorite-toggle-icon 内未找到 i 元素`);
+        return;
+    }
     const isCurrentlyFavorited = iconElement.hasClass('fa-solid');
 
     // Update UI immediately
+    console.log(`${pluginName}: handleFavoriteToggle - 更新 UI，当前状态 (isFavorited): ${isCurrentlyFavorited}`);
     if (isCurrentlyFavorited) {
         iconElement.removeClass('fa-solid').addClass('fa-regular');
+        console.log(`${pluginName}: handleFavoriteToggle - UI 更新为：取消收藏 (regular icon)`);
     } else {
         iconElement.removeClass('fa-regular').addClass('fa-solid');
+        console.log(`${pluginName}: handleFavoriteToggle - UI 更新为：收藏 (solid icon)`);
     }
 
     // Update data based on new state
+    // 根据新状态调用 add/remove
     if (!isCurrentlyFavorited) {
+        // --- 调试点 7 ---
+        console.log(`${pluginName}: handleFavoriteToggle - 准备调用 addFavorite`);
         // We found the message object using the index, now proceed
         const messageInfo = {
             // Store the original messageId string (from mesid) for consistency
             // because other functions like removeFavoriteByMessageId and refreshFavoriteIconsInView
             // also rely on finding items based on the 'mesid' attribute.
             messageId: messageIdString,
-            sender: message.name,
-            role: message.is_user ? 'user' : 'character',
+            sender: message.name, // 确保 message.name 存在
+            role: message.is_user ? 'user' : 'character', // 确保 message.is_user 存在
             // Use send_date (Unix timestamp number) as per file_d documentation
-            timestamp: message.send_date
+            timestamp: message.send_date // 确保 message.send_date 存在
         };
-
-        addFavorite(messageInfo);
+        console.log(`${pluginName}: handleFavoriteToggle - addFavorite 参数:`, messageInfo);
+        try {
+            addFavorite(messageInfo); // 假设 addFavorite 已定义
+            console.log(`${pluginName}: handleFavoriteToggle - addFavorite 调用完成`);
+        } catch (e) {
+             console.error(`${pluginName}: handleFavoriteToggle - 调用 addFavorite 时出错:`, e);
+        }
     } else {
+        // --- 调试点 8 ---
+        console.log(`${pluginName}: handleFavoriteToggle - 准备调用 removeFavoriteByMessageId`);
         // Use the original messageId string (from mesid) to remove
-        removeFavoriteByMessageId(messageIdString);
+        console.log(`${pluginName}: handleFavoriteToggle - removeFavoriteByMessageId 参数: ${messageIdString}`);
+        try {
+            removeFavoriteByMessageId(messageIdString); // 假设 removeFavoriteByMessageId 已定义
+            console.log(`${pluginName}: handleFavoriteToggle - removeFavoriteByMessageId 调用完成`);
+        } catch (e) {
+             console.error(`${pluginName}: handleFavoriteToggle - 调用 removeFavoriteByMessageId 时出错:`, e);
+        }
     }
+
+    // --- 调试点 9 ---
+    console.log(`${pluginName}: handleFavoriteToggle - 执行完毕`);
 }
 
 /**
